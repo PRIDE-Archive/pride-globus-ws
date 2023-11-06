@@ -13,6 +13,7 @@ docker_build:
     - apk add --update bash gettext tzdata coreutils ca-certificates wget
     - update-ca-certificates
 #    - envsubst < .config.ini > config.ini
+    - envsubst '${HTTPS_PROXY}' < .Dockerfile > Dockerfile
     - docker info
     - docker build -t $IMAGE .
     - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY

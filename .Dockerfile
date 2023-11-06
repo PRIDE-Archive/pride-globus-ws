@@ -24,4 +24,7 @@ ENV PATH /opt/conda/envs/$conda_env/bin:$PATH
 RUN pip install -r  requirements.txt
 
 CMD [ "/bin/bash", "-c", "source ~/.bashrc && /bin/bash"]
+
+ENV HTTPS_PROXY $HTTPS_PROXY
+
 ENTRYPOINT python main.py -c PRODUCTION
