@@ -1,6 +1,7 @@
 import configparser
 import logging
 import os
+import socket
 from logging.handlers import RotatingFileHandler
 import uuid
 import click
@@ -209,7 +210,10 @@ def main(config_file, config_profile):
 
     logging.getLogger("uvicorn.access").addFilter(NoHealthAccessLogFilter())
 
-    log_filename = config[config_profile]['LOG_FILE_NAME']
+    logs_path = config[config_profile]['LOGS_PATH']
+    if not logs_path.endswith('/'):
+        logs_path = logs_path + '/'
+    log_filename = logs_path + socket.gethostname() + '.log'
     log_max_size = config[config_profile]['LOG_MAX_SIZE']  # 1024 * 1024  # 1 MB
     log_backup_count = config[config_profile]['LOG_BACKUP_COUNT']
     log_format = '%(asctime)s [%(levelname)s] %(message)s'
