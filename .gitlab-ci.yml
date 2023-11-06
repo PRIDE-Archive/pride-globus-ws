@@ -13,6 +13,7 @@ docker_build:
     - apk add --update bash gettext tzdata coreutils ca-certificates wget
     - update-ca-certificates
 #    - envsubst < .config.ini > config.ini
+    - env
     - envsubst '${HTTPS_PROXY}' < .Dockerfile > Dockerfile
     - cat Dockerfile
     - docker info
