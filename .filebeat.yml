@@ -1,0 +1,38 @@
+path.data: $LOGS_PATH/filebeat/data #to retain the state even if the filebeat pod restarts
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - $LOGS_PATH/*.log
+    multiline.pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+    multiline.negate: true
+    multiline.match: after
+
+fields:
+  log_type: fast_api
+
+setup:
+  ilm.enabled: false #this is needed for docker image from 7.x versions
+  template:
+    name: $app_name
+    pattern: $app_name
+    settings.index.number_of_shards: 3
+
+output.logstash:
+  hosts: $logstash_hosts
+  index: $app_name
+
+monitoring.enabled: true
+monitoring.elasticsearch:
+  hosts: $elasticsearch_hosts
+#  proxy_url: http://$http_proxy_host:$http_proxy_port
+
+#output.elasticsearch:
+#  hosts: $elasticsearch_hosts
+#  proxy_url: http://$http_proxy_host:$http_proxy_port
+#  index: $app_name
+
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~
