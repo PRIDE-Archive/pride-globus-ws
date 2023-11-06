@@ -19,11 +19,11 @@ docker_build:
     - docker push $IMAGE
   when: manual
 
-kube_deploy_prod_hh:
+prod_hh:
   environment: prod-hh
   extends: .kube_deploy_script
 
-kube_deploy_prod_hx:
+prod_hx:
   environment: prod-hx
   extends: .kube_deploy_script
 
