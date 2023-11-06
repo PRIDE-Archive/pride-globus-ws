@@ -1,7 +1,8 @@
 import configparser
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 import uuid
-
 import click
 import globus_sdk
 from fastapi import FastAPI, Security, HTTPException, status
@@ -130,6 +131,7 @@ def list_dir(path: str, api_key: str = Security(get_api_key)):
             )
 
     # print(ls_out['DATA'])
+    # app_logger.info(ls_out['DATA'])
     return ls_out['DATA']
 
 
@@ -206,6 +208,22 @@ def main(config_file, config_profile):
     NOTIFY_EMAIL_MSG = config[config_profile]['NOTIFY_EMAIL_MSG']
 
     logging.getLogger("uvicorn.access").addFilter(NoHealthAccessLogFilter())
+
+    log_filename = config[config_profile]['LOG_FILE_NAME']
+    log_max_size = config[config_profile]['LOG_MAX_SIZE']  # 1024 * 1024  # 1 MB
+    log_backup_count = config[config_profile]['LOG_BACKUP_COUNT']
+    log_format = '%(asctime)s [%(levelname)s] %(message)s'
+
+    if '/' in log_filename:
+        i = log_filename.rindex("/")  # get the last index of '/' ex: /a1/b2/c3/asd.log
+        log_path = log_filename[0:i]
+        if not (os.path.exists(log_path) and os.path.isdir(log_path)):
+            os.makedirs(log_path)
+
+    # Create a RotatingFileHandler
+    file_handler = RotatingFileHandler(log_filename, maxBytes=int(log_max_size), backupCount=int(log_backup_count))
+    file_handler.setFormatter(logging.Formatter(log_format))
+    app_logger.addHandler(file_handler)
 
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(port))
