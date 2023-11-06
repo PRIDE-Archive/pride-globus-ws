@@ -44,6 +44,11 @@ prod_hx:
     - kubectl -n $k8s_namespace create configmap $CONFIG_INI --from-file=config.ini || true
     # replace configmap if it already exists
     - kubectl -n $k8s_namespace create configmap $CONFIG_INI --from-file=config.ini -o yaml --dry-run=client | kubectl replace -f -
+    - envsubst < .filebeat.yml > filebeat.yml
+    # create configmap for first time
+    - kubectl -n $k8s_namespace create configmap $FILEBEAT_CONFIG_MAP --from-file=filebeat.yml || true
+    # replace configmap if it already exists
+    - kubectl -n $k8s_namespace create configmap $FILEBEAT_CONFIG_MAP --from-file=filebeat.yml -o yaml --dry-run | kubectl replace -f -
     - envsubst < .kubernetes.yml > kubernetes.yml
     - cat kubernetes.yml
     - kubectl -n $k8s_namespace apply -f kubernetes.yml
