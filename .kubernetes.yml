@@ -48,6 +48,9 @@ spec:
         - name: $app_name
           image: $IMAGE
           imagePullPolicy: Always
+          env:
+            - name: HTTPS_PROXY
+              value: $HTTPS_PROXY
           ports:
             - containerPort: $PORT
           volumeMounts:
