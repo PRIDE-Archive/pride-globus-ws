@@ -9,6 +9,7 @@ import globus_sdk
 from fastapi import FastAPI, Security, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
+import uvicorn
 
 from globus_sdk import (TransferAPIError)
 
@@ -37,10 +38,7 @@ def get_api_key(key: str = Security(api_key_header)) -> str:
     )
 
 
-logging.basicConfig()
-app_logger = logging.getLogger("pride-globus-ws")
-app_logger.setLevel("INFO")
-
+app_logger = logging.getLogger("uvicorn") #unify the uvicorn logging with fast-api logging
 CLIENT_ID = None
 CLIENT_SECRET = None
 API_KEY = None
@@ -199,7 +197,7 @@ def get_config(file):
 @click.option('--config-file', '-a', type=click.Path(), default='config.ini')
 @click.option('--config-profile', '-c', help="This option allow to select a config profile", default='TEST')
 def main(config_file, config_profile):
-    global CLIENT_ID, CLIENT_SECRET, API_KEY, COLLECTION_END_POINT, NOTIFY_EMAIL_MSG
+    global CLIENT_ID, CLIENT_SECRET, API_KEY, COLLECTION_END_POINT, NOTIFY_EMAIL_MSG, app_logger
     config = get_config(config_file)
     port = config[config_profile]['PORT']
     CLIENT_ID = config[config_profile]['CLIENT_ID']
@@ -207,6 +205,7 @@ def main(config_file, config_profile):
     API_KEY = config[config_profile]['API_KEY']
     COLLECTION_END_POINT = uuid.UUID(config[config_profile]['COLLECTION_END_POINT'])
     NOTIFY_EMAIL_MSG = config[config_profile]['NOTIFY_EMAIL_MSG']
+    LOG_LEVEL = config[config_profile]['LOG_LEVEL']
 
     logging.getLogger("uvicorn.access").addFilter(NoHealthAccessLogFilter())
 
@@ -216,7 +215,7 @@ def main(config_file, config_profile):
     log_filename = logs_path + socket.gethostname() + '.log'
     log_max_size = config[config_profile]['LOG_MAX_SIZE']  # 1024 * 1024  # 1 MB
     log_backup_count = config[config_profile]['LOG_BACKUP_COUNT']
-    log_format = '%(asctime)s [%(levelname)s] %(message)s'
+    log_format = '%(asctime)s %(levelname)s %(message)s'
 
     if '/' in log_filename:
         i = log_filename.rindex("/")  # get the last index of '/' ex: /a1/b2/c3/asd.log
@@ -227,10 +226,12 @@ def main(config_file, config_profile):
     # Create a RotatingFileHandler
     file_handler = RotatingFileHandler(log_filename, maxBytes=int(log_max_size), backupCount=int(log_backup_count))
     file_handler.setFormatter(logging.Formatter(log_format))
+    app_logger.setLevel(LOG_LEVEL)
     app_logger.addHandler(file_handler)
 
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(port))
+    #https://github.com/tiangolo/fastapi/discussions/7457#discussioncomment-5141108
+    #unify the uvicorn logging with fast-api logging
+    uvicorn.run(app, host="0.0.0.0", port=int(port), log_config=None)
 
 
 class NoHealthAccessLogFilter(logging.Filter):
