@@ -215,7 +215,7 @@ def main(config_file, config_profile):
     log_filename = logs_path + socket.gethostname() + '.log'
     log_max_size = config[config_profile]['LOG_MAX_SIZE']  # 1024 * 1024  # 1 MB
     log_backup_count = config[config_profile]['LOG_BACKUP_COUNT']
-    log_format = '%(asctime)s %(levelname)s %(message)s'
+    log_format = '%(asctime)s.%(msecs)03d %(levelname)s %(message)s'
 
     if '/' in log_filename:
         i = log_filename.rindex("/")  # get the last index of '/' ex: /a1/b2/c3/asd.log
@@ -225,7 +225,7 @@ def main(config_file, config_profile):
 
     # Create a RotatingFileHandler
     file_handler = RotatingFileHandler(log_filename, maxBytes=int(log_max_size), backupCount=int(log_backup_count))
-    file_handler.setFormatter(logging.Formatter(log_format))
+    file_handler.setFormatter(logging.Formatter(log_format, datefmt='%Y-%m-%d %H:%M:%S'))
     app_logger.setLevel(LOG_LEVEL)
     app_logger.addHandler(file_handler)
 
