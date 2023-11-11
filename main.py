@@ -38,7 +38,7 @@ def get_api_key(key: str = Security(api_key_header)) -> str:
     )
 
 
-app_logger = logging.getLogger("uvicorn") #unify the uvicorn logging with fast-api logging
+app_logger = logging.getLogger("uvicorn")  # unify the uvicorn logging with fast-api logging
 CLIENT_ID = None
 CLIENT_SECRET = None
 API_KEY = None
@@ -71,7 +71,7 @@ def read_docs():
 
 
 @app.post("/create-shared-dir")
-def create_shared_dir(globus_username: str, api_key: str = Security(get_api_key)):
+def create_shared_dir(globus_username: str, dir_name: str = None, api_key: str = Security(get_api_key)):
     app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
     tc = globus_sdk.TransferClient(authorizer=authorizer)
 
@@ -85,28 +85,40 @@ def create_shared_dir(globus_username: str, api_key: str = Security(get_api_key)
         )
 
     id_json = ids[0]
-    dir_prefix = globus_username
 
-    if "@" in globus_username:
-        i = globus_username.index("@")
-        dir_prefix = globus_username[0:i]
+    if dir_name is None:
+        dir_prefix = globus_username
+        if "@" in globus_username:
+            i = globus_username.index("@")
+            dir_prefix = globus_username[0:i]
+        dir_name = '/' + dir_prefix + '_' + str(uuid.uuid4()) + '/'
 
-    dir = '/' + dir_prefix + '_' + str(uuid.uuid4()) + '/'
-    ddir = tc.operation_mkdir(endpoint_id=COLLECTION_END_POINT, path=dir)
+    try:
+        ddir = tc.operation_mkdir(endpoint_id=COLLECTION_END_POINT, path=dir_name)
+    except TransferAPIError as e:
+        if e.code == 'ExternalError.MkdirFailed.Exists':
+            raise HTTPException(status_code=409, detail="Dir already exists: " + dir_name)
+        else:
+            raise HTTPException(status_code=e.http_status, detail=e.message)
+
+    if not dir_name.endswith('/'):
+        dir_name = dir_name + '/'
+    if not dir_name.startswith('/'):
+        dir_name = '/' + dir_name
 
     rule_data = {
         "DATA_TYPE": "access",
         "principal_type": "identity",
         "principal": id_json['id'],
-        "path": dir,
+        "path": dir_name,
         "permissions": "rw",
         "notify_email": id_json['email'],
         "notify_message": NOTIFY_EMAIL_MSG
     }
 
     acl_add = tc.add_endpoint_acl_rule(COLLECTION_END_POINT, rule_data)
-    app_logger.info("Created dir : " + dir + " and shared with " + globus_username)
-    return dir
+    app_logger.info("Created dir : " + dir_name + " and shared with " + globus_username)
+    return dir_name
 
 
 @app.get("/list-dir")
@@ -229,8 +241,8 @@ def main(config_file, config_profile):
     app_logger.setLevel(LOG_LEVEL)
     app_logger.addHandler(file_handler)
 
-    #https://github.com/tiangolo/fastapi/discussions/7457#discussioncomment-5141108
-    #unify the uvicorn logging with fast-api logging
+    # https://github.com/tiangolo/fastapi/discussions/7457#discussioncomment-5141108
+    # unify the uvicorn logging with fast-api logging
     uvicorn.run(app, host="0.0.0.0", port=int(port), log_config=None)
 
 
