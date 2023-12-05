@@ -111,9 +111,9 @@ def create_shared_dir(globus_username: str, dir_name: str = None, api_key: str =
         "principal_type": "identity",
         "principal": id_json['id'],
         "path": dir_name,
-        "permissions": "rw",
-        "notify_email": id_json['email'],
-        "notify_message": NOTIFY_EMAIL_MSG
+        "permissions": "rw"
+        # "notify_email": id_json['email'],
+        # "notify_message": NOTIFY_EMAIL_MSG
     }
 
     acl_add = tc.add_endpoint_acl_rule(COLLECTION_END_POINT, rule_data)
