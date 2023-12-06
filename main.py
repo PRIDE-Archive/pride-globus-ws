@@ -2,6 +2,7 @@ import configparser
 import logging
 import os
 import socket
+from datetime import datetime, date
 from logging.handlers import RotatingFileHandler
 import uuid
 import click
@@ -181,7 +182,7 @@ def unshare_dir(path: str, api_key: str = Security(get_api_key)):
 
 
 @app.delete("/delete-zombie-shares")
-def unshare_dir(api_key: str = Security(get_api_key)):
+def delete_zombie_shares(api_key: str = Security(get_api_key)):
     app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
     tc = globus_sdk.TransferClient(authorizer=authorizer)
     shared_dirs = get_shared_dirs()
@@ -212,6 +213,38 @@ def delete_dir(path: str, api_key: str = Security(get_api_key)):
     app_logger.info('delete_dir {} , task_id: {}'.format(path, task['task_id']))
     tc.task_wait(task['task_id'])
     app_logger.info('Successfully deleted_dir {} , task_id: {}'.format(path, task['task_id']))
+
+@app.delete("/delete-old-dirs")
+def delete_old_dirs(path: str, num_of_days: int, api_key: str = Security(get_api_key)):
+    if num_of_days < 14:
+        raise HTTPException(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            detail="Not allowed to delete dirs that are less than 14 days old",
+        )
+    app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
+    tc = globus_sdk.TransferClient(authorizer=authorizer)
+    ls_out = list_dir(path)
+    if not path.endswith('/'):
+        path = path + '/'
+
+    deleted_list = []
+    for i in ls_out:
+        dir_path = path + i['name']
+        dir_date_str = i['last_modified'].split()[0]
+        dir_date = datetime.strptime(dir_date_str, '%Y-%m-%d').date()
+        today = date.today()
+        delta = today - dir_date
+        if delta.days >= num_of_days:
+            deleted_list.append(dir_path)
+            unshare_dir(dir_path)
+            ddata = globus_sdk.DeleteData(tc, COLLECTION_END_POINT, recursive=True)
+            ddata.add_item(dir_path)
+            task = tc.submit_delete(ddata)
+            app_logger.info('delete_dir {} , task_id: {}'.format(dir_path, task['task_id']))
+            # tc.task_wait(task['task_id'])
+            # app_logger.info('Successfully deleted_dir {} , task_id: {}'.format(dir_path, task['task_id']))
+
+    return deleted_list
 
 
 def get_config(file):
