@@ -129,7 +129,7 @@ def list_dir(path: str, api_key: str = Security(get_api_key)):
         ls_out = tc.operation_ls(endpoint_id=COLLECTION_END_POINT, path=path)
     except TransferAPIError as e:
         app_logger.error(e)
-        print(e.message)
+        # print(e.message)
         if e.http_status == 404:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -154,7 +154,7 @@ def get_shared_dirs(api_key: str = Security(get_api_key)):
         acl_list = tc.endpoint_acl_list(COLLECTION_END_POINT)
     except TransferAPIError as e:
         app_logger.error(e)
-        print(e.message)
+        # print(e.message)
         raise HTTPException(
             status_code=e.http_status,
             detail=e.message,
@@ -178,6 +178,21 @@ def unshare_dir(path: str, api_key: str = Security(get_api_key)):
         if i['path'] == path:
             tc.delete_endpoint_acl_rule(COLLECTION_END_POINT, i['id'])
             app_logger.info("Successfully unshared dir : " + path)
+
+
+@app.delete("/delete-zombie-shares")
+def unshare_dir(api_key: str = Security(get_api_key)):
+    app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
+    tc = globus_sdk.TransferClient(authorizer=authorizer)
+    shared_dirs = get_shared_dirs()
+    for i in shared_dirs:
+        shared_dir = i['path']
+        try:
+            list_dir(shared_dir, api_key)
+        except HTTPException as e:
+            if e.status_code == 404:
+                tc.delete_endpoint_acl_rule(COLLECTION_END_POINT, i['id'])
+                app_logger.info("Successfully removed zombie share : " + shared_dir)
 
 
 @app.delete("/delete-dir")
