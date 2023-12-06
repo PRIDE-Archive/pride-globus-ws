@@ -185,6 +185,7 @@ def unshare_dir(api_key: str = Security(get_api_key)):
     app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
     tc = globus_sdk.TransferClient(authorizer=authorizer)
     shared_dirs = get_shared_dirs()
+    unshared_list = []
     for i in shared_dirs:
         shared_dir = i['path']
         try:
@@ -193,6 +194,9 @@ def unshare_dir(api_key: str = Security(get_api_key)):
             if e.status_code == 404:
                 tc.delete_endpoint_acl_rule(COLLECTION_END_POINT, i['id'])
                 app_logger.info("Successfully removed zombie share : " + shared_dir)
+                unshared_list.append(shared_dir)
+
+    return unshared_list
 
 
 @app.delete("/delete-dir")
