@@ -129,21 +129,18 @@ def list_dir(path: str, api_key: str = Security(get_api_key)):
     try:
         ls_out = tc.operation_ls(endpoint_id=COLLECTION_END_POINT, path=path)
     except TransferAPIError as e:
-        app_logger.error(e)
-        # print(e.message)
         if e.http_status == 404:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Directory " + path + " not found",
             )
         else:
+            app_logger.error(e)
             raise HTTPException(
                 status_code=e.http_status,
                 detail=e.message,
             )
 
-    # print(ls_out['DATA'])
-    # app_logger.info(ls_out['DATA'])
     return ls_out['DATA']
 
 
@@ -155,13 +152,11 @@ def get_shared_dirs(api_key: str = Security(get_api_key)):
         acl_list = tc.endpoint_acl_list(COLLECTION_END_POINT)
     except TransferAPIError as e:
         app_logger.error(e)
-        # print(e.message)
         raise HTTPException(
             status_code=e.http_status,
             detail=e.message,
         )
 
-    # print(acl_list['DATA'])
     return acl_list['DATA']
 
 
@@ -193,9 +188,13 @@ def delete_zombie_shares(api_key: str = Security(get_api_key)):
             list_dir(shared_dir, api_key)
         except HTTPException as e:
             if e.status_code == 404:
-                tc.delete_endpoint_acl_rule(COLLECTION_END_POINT, i['id'])
-                app_logger.info("Successfully removed zombie share : " + shared_dir)
-                unshared_list.append(shared_dir)
+                try:
+                    tc.delete_endpoint_acl_rule(COLLECTION_END_POINT, i['id'])
+                    app_logger.info("Successfully removed zombie share : " + shared_dir)
+                    unshared_list.append(shared_dir)
+                except Exception as e2:
+                    app_logger.error("Below exception occurred while deleting zombie share " + shared_dir)
+                    app_logger.error(e2)
 
     return unshared_list
 
