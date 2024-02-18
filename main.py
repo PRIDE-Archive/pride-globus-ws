@@ -7,12 +7,14 @@ from logging.handlers import RotatingFileHandler
 import uuid
 import click
 import globus_sdk
+import requests
 from fastapi import FastAPI, Security, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 import uvicorn
 
 from globus_sdk import (TransferAPIError)
+from globus_sdk.scopes import GCSCollectionScopeBuilder, AuthScopes, TransferScopes
 
 app = FastAPI(title="PRIDE Globus WS",
               description="PRIDE Globus WS",
@@ -44,6 +46,7 @@ CLIENT_ID = None
 CLIENT_SECRET = None
 API_KEY = None
 COLLECTION_END_POINT: uuid.UUID = None
+COLLECTION_HTTP_SERVER = None
 NOTIFY_EMAIL_MSG = None
 
 
@@ -73,7 +76,7 @@ def read_docs():
 
 @app.post("/create-shared-dir")
 def create_shared_dir(globus_username: str, dir_name: str = None, api_key: str = Security(get_api_key)):
-    app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
+    app_client, authorizer = get_confidential_app_client_and_authorizer()
     tc = globus_sdk.TransferClient(authorizer=authorizer)
 
     ids_resp = app_client.get_identities(usernames=globus_username)
@@ -124,7 +127,7 @@ def create_shared_dir(globus_username: str, dir_name: str = None, api_key: str =
 
 @app.get("/list-dir")
 def list_dir(path: str, api_key: str = Security(get_api_key)):
-    app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
+    app_client, authorizer = get_confidential_app_client_and_authorizer()
     tc = globus_sdk.TransferClient(authorizer=authorizer)
     try:
         ls_out = tc.operation_ls(endpoint_id=COLLECTION_END_POINT, path=path)
@@ -146,7 +149,7 @@ def list_dir(path: str, api_key: str = Security(get_api_key)):
 
 @app.get("/get-shared-dirs")
 def get_shared_dirs(api_key: str = Security(get_api_key)):
-    app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
+    app_client, authorizer = get_confidential_app_client_and_authorizer()
     tc = globus_sdk.TransferClient(authorizer=authorizer)
     try:
         acl_list = tc.endpoint_acl_list(COLLECTION_END_POINT)
@@ -162,7 +165,7 @@ def get_shared_dirs(api_key: str = Security(get_api_key)):
 
 @app.delete("/unshare-dir")
 def unshare_dir(path: str, api_key: str = Security(get_api_key)):
-    app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
+    app_client, authorizer = get_confidential_app_client_and_authorizer()
     tc = globus_sdk.TransferClient(authorizer=authorizer)
     dirs = get_shared_dirs()
     # print(dirs)
@@ -178,7 +181,7 @@ def unshare_dir(path: str, api_key: str = Security(get_api_key)):
 
 @app.delete("/delete-zombie-shares")
 def delete_zombie_shares(api_key: str = Security(get_api_key)):
-    app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
+    app_client, authorizer = get_confidential_app_client_and_authorizer()
     tc = globus_sdk.TransferClient(authorizer=authorizer)
     shared_dirs = get_shared_dirs()
     unshared_list = []
@@ -201,7 +204,7 @@ def delete_zombie_shares(api_key: str = Security(get_api_key)):
 
 @app.delete("/delete-dir")
 def delete_dir(path: str, api_key: str = Security(get_api_key)):
-    app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
+    app_client, authorizer = get_confidential_app_client_and_authorizer()
     tc = globus_sdk.TransferClient(authorizer=authorizer)
     # just to check if the dir exists or not. If it doesn't exist, the list_dir() function returns HTTP error
     ls = list_dir(path)
@@ -213,6 +216,7 @@ def delete_dir(path: str, api_key: str = Security(get_api_key)):
     tc.task_wait(task['task_id'])
     app_logger.info('Successfully deleted_dir {} , task_id: {}'.format(path, task['task_id']))
 
+
 @app.delete("/delete-old-dirs")
 def delete_old_dirs(path: str, num_of_days: int, api_key: str = Security(get_api_key)):
     if num_of_days < 14:
@@ -220,7 +224,7 @@ def delete_old_dirs(path: str, num_of_days: int, api_key: str = Security(get_api
             status_code=status.HTTP_406_NOT_ACCEPTABLE,
             detail="Not allowed to delete dirs that are less than 14 days old",
         )
-    app_client, authorizer = get_confidential_app_client_and_authorizer(CLIENT_ID, CLIENT_SECRET)
+    app_client, authorizer = get_confidential_app_client_and_authorizer()
     tc = globus_sdk.TransferClient(authorizer=authorizer)
     ls_out = list_dir(path)
     if not path.endswith('/'):
@@ -246,6 +250,22 @@ def delete_old_dirs(path: str, num_of_days: int, api_key: str = Security(get_api
     return deleted_list
 
 
+@app.get("/get-file")
+def get_file(path: str, api_key: str = Security(get_api_key)):
+    https_token = get_https_token()
+    url = f"{COLLECTION_HTTP_SERVER}/{path}"
+    r = requests.get(url, headers={
+        "Authorization": "Bearer {}".format(https_token),
+    }, stream=True)
+
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=r.status_code,
+            detail=r.text,
+        )
+    return r.text
+
+
 def get_config(file):
     """
     This method read the default configuration file config.ini in the same path of the pipeline execution
@@ -260,13 +280,14 @@ def get_config(file):
 @click.option('--config-file', '-a', type=click.Path(), default='config.ini')
 @click.option('--config-profile', '-c', help="This option allow to select a config profile", default='TEST')
 def main(config_file, config_profile):
-    global CLIENT_ID, CLIENT_SECRET, API_KEY, COLLECTION_END_POINT, NOTIFY_EMAIL_MSG, app_logger
+    global CLIENT_ID, CLIENT_SECRET, API_KEY, COLLECTION_END_POINT, COLLECTION_HTTP_SERVER, NOTIFY_EMAIL_MSG, app_logger
     config = get_config(config_file)
     port = config[config_profile]['PORT']
     CLIENT_ID = config[config_profile]['CLIENT_ID']
     CLIENT_SECRET = config[config_profile]['CLIENT_SECRET']
     API_KEY = config[config_profile]['API_KEY']
     COLLECTION_END_POINT = uuid.UUID(config[config_profile]['COLLECTION_END_POINT'])
+    COLLECTION_HTTP_SERVER = config[config_profile]['COLLECTION_HTTP_SERVER']
     NOTIFY_EMAIL_MSG = config[config_profile]['NOTIFY_EMAIL_MSG']
     LOG_LEVEL = config[config_profile]['LOG_LEVEL']
 
@@ -306,16 +327,41 @@ class NoHealthAccessLogFilter(logging.Filter):
             return True
 
 
-def get_confidential_app_client_and_authorizer(client_id, client_secret):
+def get_confidential_app_client_and_authorizer():
     client = globus_sdk.ConfidentialAppAuthClient(
-        client_id=client_id,
-        client_secret=client_secret)
-    token_response = client.oauth2_client_credentials_tokens()
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET)
+
+    SCOPES = (
+        AuthScopes.openid,
+        AuthScopes.profile,
+        AuthScopes.email,
+        TransferScopes.all
+    )
+
+    token_response = client.oauth2_client_credentials_tokens(SCOPES)
     tokens = token_response.by_resource_server
     transfer_tokens = tokens['transfer.api.globus.org']
     transfer_access_token = transfer_tokens['access_token']
 
     return client, globus_sdk.AccessTokenAuthorizer(transfer_access_token)
+
+
+def get_https_token():
+    client = globus_sdk.ConfidentialAppAuthClient(
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET)
+
+    collection_scope_builder = GCSCollectionScopeBuilder(str(COLLECTION_END_POINT))
+    SCOPES = (
+        collection_scope_builder.https  # https scope is for downloading files from a collection
+    )
+    token_response = client.oauth2_client_credentials_tokens(SCOPES)
+    tokens = token_response.by_resource_server
+    # print(tokens)
+    https_data = tokens[str(COLLECTION_END_POINT)]
+    https_token = https_data['access_token']  # https token is for downloading files
+    return https_token
 
 
 if __name__ == "__main__":
